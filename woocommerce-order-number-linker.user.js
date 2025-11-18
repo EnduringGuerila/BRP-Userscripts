@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         WooCommerce Order Number Linker
-// @namespace    http://tampermonkey.net/
+// @namespace    https://github.com/EnduringGuerila/BRP-Userscripts/blob/master/woocommerce-order-number-linker.user.js
 // @version      1.2
 // @description  Scans pages for WooCommerce order numbers (200000-300000) and makes them clickable links to the order edit page. Fixes for Gmail/Zoho multiple instances and subject lines.
 // @author       Tim Kirtland

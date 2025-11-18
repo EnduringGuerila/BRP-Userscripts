@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Universal Shipment Tracker Linker
-// @namespace    http://tampermonkey.net/
+// @namespace    https://github.com/EnduringGuerila/BRP-Userscripts/blob/master/universal-shipment-tracker-linker.user.js
 // @version      1.1
 // @description  Scans pages for FedEx, UPS, and USPS tracking numbers and makes them clickable links.
 // @author       Tim Kirtland

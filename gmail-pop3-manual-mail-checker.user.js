@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Gmail POP3 Manual Mail Checker
-// @namespace    http://tampermonkey.net/
+// @namespace    https://github.com/EnduringGuerila/BRP-Userscripts/blob/master/gmail-pop3-manual-mail-checker.user.js
 // @version      2.2
 // @description  Adds a button to the Inbox toolbar that navigates to the Accounts Settings page and immediately forces a one-time POP3 mail check.
 // @author       Gemini
