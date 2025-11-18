@@ -4,6 +4,8 @@
 // @version      2.3
 // @description  Adds a button to the Inbox toolbar that navigates to the Accounts Settings page, forces a one-time POP3 mail check, and navigates back to the Inbox.
 // @author       EnduringGuerila
+// @updateURL    https://raw.githubusercontent.com/EnduringGuerila/BRP-Userscripts/master/gmail-pop3-manual-mail-checker.user.js
+// @downloadURL  https://raw.githubusercontent.com/EnduringGuerila/BRP-Userscripts/master/gmail-pop3-manual-mail-checker.user.js
 // @grant        GM_xmlhttpRequest
 // @match        *://mail.google.com/*
 //

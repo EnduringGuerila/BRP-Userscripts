@@ -4,6 +4,8 @@
 // @version      1.1
 // @description  Scans pages for FedEx, UPS, and USPS tracking numbers and makes them clickable links.
 // @author       EnduringGuerila
+// @updateURL    https://raw.githubusercontent.com/EnduringGuerila/BRP-Userscripts/master/universal-shipment-tracker-linker.user.js
+// @downloadURL  https://raw.githubusercontent.com/EnduringGuerila/BRP-Userscripts/master/universal-shipment-tracker-linker.user.js
 // @grant        none
 // @match        *://*/*
 //
