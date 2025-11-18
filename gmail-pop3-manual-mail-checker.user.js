@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Gmail POP3 Manual Mail Checker
 // @namespace    https://github.com/EnduringGuerila/BRP-Userscripts/blob/master/gmail-pop3-manual-mail-checker.user.js
-// @version      2.2
-// @description  Adds a button to the Inbox toolbar that navigates to the Accounts Settings page and immediately forces a one-time POP3 mail check.
-// @author       Gemini
+// @version      2.3
+// @description  Adds a button to the Inbox toolbar that navigates to the Accounts Settings page, forces a one-time POP3 mail check, and navigates back to the Inbox.
+// @author       EnduringGuerila
 // @grant        GM_xmlhttpRequest
 // @match        *://mail.google.com/*
 //
@@ -15,7 +15,7 @@
     // --- Configuration ---
     const POP3_LINK_TEXT_EN = 'Check mail now'; // The text for the link in English UI
     const REFRESH_LABEL = 'Refresh'; // The aria-label for the existing Gmail Refresh button
-    const TOOLBAR_BUTTONS_CONTAINER_SELECTOR = 'div.bzn';
+    const TOOLBAR_BUTTONS_CONTAINER_SELECTOR = 'div.bzn'; 
 
     // Check if we are on the Accounts Settings page (where the true POP3 check link lives)
     const isOnSettingsPage = window.location.hash.includes('#settings/accounts');
@@ -31,7 +31,7 @@
         // Selector 1: Try to find links that have the text (language dependent)
         let pop3Links = Array.from(document.querySelectorAll('span[role="button"], div[role="button"], a[role="button"]'))
             .filter(el => el.textContent.trim() === POP3_LINK_TEXT_EN);
-
+        
         // Fallback Selector 2: Look for elements that have a 'data-popid' attribute (more reliable)
         if (pop3Links.length === 0) {
             pop3Links = Array.from(document.querySelectorAll('[data-popid]'))
@@ -41,23 +41,23 @@
         if (pop3Links.length > 0) {
             pop3Links.forEach((link, index) => {
                 // Use robust mousedown/mouseup/click dispatch for guaranteed click detection
-                const eventConfig = {
-                    view: document.defaultView,
-                    bubbles: true,
-                    cancelable: true
+                const eventConfig = { 
+                    view: document.defaultView, 
+                    bubbles: true, 
+                    cancelable: true 
                 };
 
                 // Dispatch mousedown and mouseup events to fully simulate a physical click
                 link.dispatchEvent(new MouseEvent('mousedown', eventConfig));
                 link.dispatchEvent(new MouseEvent('mouseup', eventConfig));
                 link.dispatchEvent(new MouseEvent('click', eventConfig)); // Also dispatch click just in case
-
+                
                 const accountIdentifier = link.closest('table, tr')?.querySelector('td:nth-child(2)')?.textContent?.trim() || `Account #${index + 1}`;
                 console.log(`[POP3 Check] Triggered check for ${accountIdentifier}.`);
             });
             return true; // Success!
-        }
-
+        } 
+        
         console.warn(`[POP3 Check] Could not find any "${POP3_LINK_TEXT_EN}" links.`);
         return false; // Failure to find links
     }
@@ -66,7 +66,7 @@
 
     if (isOnSettingsPage) {
         // --- LOGIC FOR ACCOUNTS SETTINGS PAGE: ONE-TIME CHECK ---
-
+        
         const MAX_INITIAL_ATTEMPTS = 10; // Try for up to 5 seconds (10 attempts * 500ms)
         let attemptCount = 0;
         let initialCheckInterval;
@@ -78,24 +78,30 @@
             if (autoCheckPop3()) {
                 // Success: Links found and clicked. Clear the polling interval and stop.
                 clearInterval(initialCheckInterval);
-                console.log('[POP3 Manual Check] Check successful. Polling stopped.');
+                console.log('[POP3 Manual Check] Check successful. Returning to Inbox.');
+                
+                // *** NEW: Navigate back to the Inbox after a successful check ***
+                window.location.hash = '#inbox';
 
             } else if (attemptCount >= MAX_INITIAL_ATTEMPTS) {
                 // Failure: Max attempts reached. Clear the polling interval and stop.
                 clearInterval(initialCheckInterval);
-                console.error('[POP3 Manual Check] Failed to find "Check mail now" links within the allowed time. Check failed.');
+                console.error('[POP3 Manual Check] Failed to find "Check mail now" links within the allowed time. Check failed. Returning to Inbox.');
+                
+                // Return to Inbox even if the check failed to avoid leaving the user stuck in settings
+                window.location.hash = '#inbox';
             }
             attemptCount++;
         }
-
+        
         // Start polling immediately after the navigation happens (checks every 500ms)
         initialCheckInterval = setInterval(runInitialCheckLoop, 500);
-
+        
         console.log('POP3 Checker: Initializing aggressive polling check on Accounts Settings page.');
 
     } else {
         // --- LOGIC FOR INBOX PAGE (Add Button) ---
-
+        
         /**
          * Action for the custom button: navigates to the Settings > Accounts hash.
          */
@@ -113,7 +119,7 @@
             if (!toolbarContainer) return;
 
             const existingRefreshButton = toolbarContainer.querySelector(`div[aria-label="${REFRESH_LABEL}"]`);
-
+            
             if (existingRefreshButton) {
                 const refreshGroupContainer = existingRefreshButton.parentNode;
 
@@ -122,22 +128,22 @@
                 newButton.setAttribute('role', 'button');
                 newButton.setAttribute('tabindex', '0');
                 newButton.setAttribute('aria-label', 'Check POP3 Mail Now');
-
+                
                 // Custom styling for a compact, text-based Gmail toolbar button
                 newButton.style.cssText = `
-                    min-width: unset !important;
-                    height: 26px;
+                    min-width: unset !important; 
+                    height: 26px; 
                     line-height: 26px;
                     padding: 0 8px;
                     margin-left: 8px;
-                    background-color: #dadce0;
-                    color: #202124;
+                    background-color: #dadce0; 
+                    color: #202124; 
                     font-size: 11px;
                     font-weight: 500;
                     border-radius: 4px;
                     cursor: pointer;
                     user-select: none;
-                    display: inline-block;
+                    display: inline-block; 
                     transition: background-color 0.2s;
                 `;
 
@@ -146,10 +152,10 @@
                 // Add hover/active styling
                 newButton.onmouseover = () => newButton.style.backgroundColor = '#d3d4d6';
                 newButton.onmouseout = () => newButton.style.backgroundColor = '#dadce0';
-
+                
                 // Attach the navigation function
                 newButton.addEventListener('click', navigateToSettings);
-
+                
                 // --- 2. Insert the new button next to the existing Refresh icon ---
                 refreshGroupContainer.insertBefore(newButton, existingRefreshButton.nextSibling);
 
@@ -167,12 +173,12 @@
                     if (toolbarContainer) {
                         observerInstance.disconnect();
                         // Use a small delay to ensure all related elements are fully ready
-                        setTimeout(addManualCheckButton, 500);
+                        setTimeout(addManualCheckButton, 500); 
                     }
                 });
 
                 observer.observe(document.body, { childList: true, subtree: true });
-            }, 100);
+            }, 100); 
         }
 
         initializeInboxButton();
