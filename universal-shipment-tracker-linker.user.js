@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Universal Shipment Tracker Linker
 // @namespace    https://github.com/EnduringGuerila/BRP-Userscripts/blob/master/universal-shipment-tracker-linker.user.js
-// @version      1.1
-// @description  Scans pages for FedEx, UPS, and USPS tracking numbers and makes them clickable links.
+// @version      1.2
+// @description  Scans pages for FedEx, UPS, and USPS tracking numbers and makes them clickable links. Works on Google Sheets!
 // @author       EnduringGuerila
 // @updateURL    https://raw.githubusercontent.com/EnduringGuerila/BRP-Userscripts/master/universal-shipment-tracker-linker.user.js
 // @downloadURL  https://raw.githubusercontent.com/EnduringGuerila/BRP-Userscripts/master/universal-shipment-tracker-linker.user.js
@@ -164,9 +164,104 @@
     }
 
     /**
+     * Detects if a string contains a tracking number and returns carrier info.
+     * @param {string} text - The text to check.
+     * @returns {object|null} Carrier info if tracking number found.
+     */
+    function detectTrackingNumber(text) {
+        if (!text) return null;
+        
+        for (const { type, regex } of ALL_REGEXES) {
+            const match = text.match(regex);
+            if (match) {
+                const trackingNum = match[0];
+                return getCarrierInfo(trackingNum);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Handles Google Sheets by monitoring cell content and making tracking numbers clickable.
+     */
+    function initializeGoogleSheets() {
+        console.log('[Shipment Tracker] Google Sheets detected, initializing...');
+        
+        // Monitor for cell content changes
+        const observer = new MutationObserver(() => {
+            // Process cells in the spreadsheet
+            const cells = document.querySelectorAll('.cell-input, [role="gridcell"]');
+            cells.forEach(cell => {
+                const text = cell.textContent || cell.innerText;
+                const carrierInfo = detectTrackingNumber(text);
+                
+                if (carrierInfo && !cell.querySelector('a[data-tracking-link]')) {
+                    // Add click handler to make the cell clickable
+                    cell.style.cursor = 'pointer';
+                    cell.style.color = '#3870e8';
+                    cell.style.textDecoration = 'underline';
+                    cell.setAttribute('title', `Track via ${carrierInfo.type}`);
+                    
+                    // Add click event if not already added
+                    if (!cell.hasAttribute('data-tracking-handler')) {
+                        cell.setAttribute('data-tracking-handler', 'true');
+                        cell.addEventListener('click', (e) => {
+                            // Only open if not editing
+                            if (!cell.classList.contains('editing')) {
+                                window.open(carrierInfo.url, '_blank');
+                                e.stopPropagation();
+                            }
+                        });
+                    }
+                }
+            });
+        });
+        
+        // Observe the entire document for changes
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
+        
+        // Initial scan
+        setTimeout(() => {
+            const cells = document.querySelectorAll('.cell-input, [role="gridcell"]');
+            cells.forEach(cell => {
+                const text = cell.textContent || cell.innerText;
+                const carrierInfo = detectTrackingNumber(text);
+                
+                if (carrierInfo) {
+                    cell.style.cursor = 'pointer';
+                    cell.style.color = '#3870e8';
+                    cell.style.textDecoration = 'underline';
+                    cell.setAttribute('title', `Track via ${carrierInfo.type}`);
+                    
+                    if (!cell.hasAttribute('data-tracking-handler')) {
+                        cell.setAttribute('data-tracking-handler', 'true');
+                        cell.addEventListener('click', (e) => {
+                            if (!cell.classList.contains('editing')) {
+                                window.open(carrierInfo.url, '_blank');
+                                e.stopPropagation();
+                            }
+                        });
+                    }
+                }
+            });
+        }, 2000);
+    }
+
+    /**
      * Initializes the script by processing existing content and setting up observers.
      */
     function initialize() {
+        // Check if we're on Google Sheets
+        if (window.location.hostname.includes('docs.google.com') && 
+            window.location.pathname.includes('/spreadsheets/')) {
+            initializeGoogleSheets();
+            return;
+        }
+        
         // 1. Process the existing content of the body immediately
         processNode(document.body);
 
