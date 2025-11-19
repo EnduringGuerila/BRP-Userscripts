@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Universal Shipment Tracker Linker
 // @namespace    https://github.com/EnduringGuerila/BRP-Userscripts/blob/master/universal-shipment-tracker-linker.user.js
-// @version      1.2
+// @version      1.3
 // @description  Scans pages for FedEx, UPS, and USPS tracking numbers and makes them clickable links. Works on Google Sheets!
 // @author       EnduringGuerila
 // @updateURL    https://raw.githubusercontent.com/EnduringGuerila/BRP-Userscripts/master/universal-shipment-tracker-linker.user.js
@@ -187,68 +187,76 @@
     function initializeGoogleSheets() {
         console.log('[Shipment Tracker] Google Sheets detected, initializing...');
         
-        // Monitor for cell content changes
-        const observer = new MutationObserver(() => {
-            // Process cells in the spreadsheet
-            const cells = document.querySelectorAll('.cell-input, [role="gridcell"]');
-            cells.forEach(cell => {
-                const text = cell.textContent || cell.innerText;
-                const carrierInfo = detectTrackingNumber(text);
-                
-                if (carrierInfo && !cell.querySelector('a[data-tracking-link]')) {
-                    // Add click handler to make the cell clickable
-                    cell.style.cursor = 'pointer';
-                    cell.style.color = '#3870e8';
-                    cell.style.textDecoration = 'underline';
-                    cell.setAttribute('title', `Track via ${carrierInfo.type}`);
-                    
-                    // Add click event if not already added
-                    if (!cell.hasAttribute('data-tracking-handler')) {
-                        cell.setAttribute('data-tracking-handler', 'true');
-                        cell.addEventListener('click', (e) => {
-                            // Only open if not editing
-                            if (!cell.classList.contains('editing')) {
-                                window.open(carrierInfo.url, '_blank');
-                                e.stopPropagation();
-                            }
-                        });
-                    }
-                }
-            });
-        });
+        // Store processed cells to track their original styles
+        const processedCells = new WeakMap();
         
-        // Observe the entire document for changes
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true,
-            characterData: true
-        });
-        
-        // Initial scan
-        setTimeout(() => {
-            const cells = document.querySelectorAll('.cell-input, [role="gridcell"]');
+        function processCells() {
+            // Target the actual grid cells in the canvas grid
+            const cells = document.querySelectorAll('[role="gridcell"]');
+            
             cells.forEach(cell => {
                 const text = cell.textContent || cell.innerText;
                 const carrierInfo = detectTrackingNumber(text);
                 
                 if (carrierInfo) {
-                    cell.style.cursor = 'pointer';
-                    cell.style.color = '#3870e8';
-                    cell.style.textDecoration = 'underline';
-                    cell.setAttribute('title', `Track via ${carrierInfo.type}`);
-                    
-                    if (!cell.hasAttribute('data-tracking-handler')) {
-                        cell.setAttribute('data-tracking-handler', 'true');
+                    // Store original styles if not already stored
+                    if (!processedCells.has(cell)) {
+                        processedCells.set(cell, {
+                            cursor: cell.style.cursor,
+                            textDecoration: cell.style.textDecoration,
+                            url: carrierInfo.url,
+                            type: carrierInfo.type
+                        });
+                        
+                        // Add click handler
                         cell.addEventListener('click', (e) => {
-                            if (!cell.classList.contains('editing')) {
-                                window.open(carrierInfo.url, '_blank');
+                            const stored = processedCells.get(cell);
+                            if (stored && !cell.classList.contains('editing')) {
+                                window.open(stored.url, '_blank');
+                                e.preventDefault();
                                 e.stopPropagation();
                             }
                         });
                     }
+                    
+                    // Apply clickable styles
+                    cell.style.cursor = 'pointer';
+                    cell.style.textDecoration = 'underline';
+                    cell.setAttribute('title', `Track via ${carrierInfo.type} (Click to track)`);
+                } else {
+                    // Remove tracking styles if no longer a tracking number
+                    if (processedCells.has(cell)) {
+                        const original = processedCells.get(cell);
+                        cell.style.cursor = original.cursor;
+                        cell.style.textDecoration = original.textDecoration;
+                        cell.removeAttribute('title');
+                        processedCells.delete(cell);
+                    }
                 }
             });
-        }, 2000);
+        }
+        
+        // Process cells periodically and on mutations
+        const observer = new MutationObserver(() => {
+            processCells();
+        });
+        
+        // Observe the grid area
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['aria-label', 'aria-colindex', 'aria-rowindex']
+        });
+        
+        // Initial scan after sheet loads
+        setTimeout(processCells, 1000);
+        setTimeout(processCells, 3000);
+        
+        // Process on scroll/navigation
+        document.addEventListener('scroll', () => {
+            setTimeout(processCells, 100);
+        }, true);
     }
 
     /**
