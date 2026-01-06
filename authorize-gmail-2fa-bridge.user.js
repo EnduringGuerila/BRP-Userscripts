@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Authorize.net 2FA Auto-Bridge (Gmail)
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  Automates 2FA PIN retrieval between Gmail and Authorize.net
 // @author       EnduringGuerila
 // @updateURL    https://raw.githubusercontent.com/EnduringGuerila/BRP-Userscripts/master/authorize-gmail-2fa-bridge.user.js
@@ -16,69 +16,82 @@
 (function() {
     'use strict';
 
-    // --- CONFIGURATION ---
     const AUTH_URL = "login.authorize.net";
     const GMAIL_URL = "mail.google.com";
 
-    // --- LOGIC FOR AUTHORIZE.NET ---
+    // --- AUTHORIZE.NET LOGIC ---
     if (location.href.includes(AUTH_URL)) {
-        console.log("Auth.net Monitor Active...");
+        console.log("Auth.net: Waiting for PIN...");
 
-        // 1. Auto-click the "Email PIN" button if visible
+        // Auto-click "Email PIN" button if it exists
         const sendBtn = document.querySelector('button.button-submit-recovery');
-        if (sendBtn) {
-            console.log("Triggering Email PIN send...");
-            sendBtn.click();
-        }
+        if (sendBtn) sendBtn.click();
 
-        // 2. Wait for the Gmail script to send the code
-        GM_addValueChangeListener("latest_pin", (name, old_value, new_value, remote) => {
-            if (remote) { // Only react if the value came from the Gmail tab
+        GM_addValueChangeListener("latest_pin", (name, old_val, new_val, remote) => {
+            if (remote) {
+                // Find input by the name attribute since ID is dynamic
                 const pinInput = document.querySelector('input[name="input-enter-pin"]');
                 if (pinInput) {
-                    pinInput.value = new_value;
-                    console.log("PIN Pasted: " + new_value);
+                    pinInput.value = new_val;
+                    
+                    // Trigger events so the website "registers" the typing
+                    pinInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    pinInput.dispatchEvent(new Event('change', { bubbles: true }));
 
-                    // Optional: Auto-submit after a small delay
+                    console.log("PIN Injected: " + new_val);
+
+                    // Auto-submit
                     setTimeout(() => {
                         const submitBtn = document.querySelector('button[type="submit"]:not(.button-submit-recovery)');
                         if (submitBtn) submitBtn.click();
-                    }, 500);
+                    }, 600);
                 }
             }
         });
     }
 
-    // --- LOGIC FOR GMAIL ---
+    // --- GMAIL LOGIC ---
     if (location.href.includes(GMAIL_URL)) {
-        console.log("Gmail Monitor Active...");
+        let isProcessing = false;
 
         setInterval(() => {
-            // A. Look for the PIN in the email body (if email is already open)
+            if (isProcessing) return; // Prevent loop during navigation
+
             const bodyText = document.body.innerText;
             const pinMatch = bodyText.match(/Your Verification PIN is: (\d{8})/);
 
+            // 1. If PIN is found in an open email
             if (pinMatch) {
                 const pin = pinMatch[1];
-                if (GM_getValue("latest_pin") !== pin) {
-                    console.log("New PIN found: " + pin);
+                const lastUsed = GM_getValue("latest_pin");
+
+                if (pin !== lastUsed) {
+                    isProcessing = true;
+                    console.log("PIN Found: " + pin);
                     GM_setValue("latest_pin", pin);
+
+                    // Wait a moment then go back to inbox
+                    setTimeout(() => {
+                        console.log("Returning to inbox...");
+                        window.location.hash = "#inbox"; 
+                        // Alternatively: window.history.back();
+                        isProcessing = false;
+                    }, 1000);
                 }
             }
 
-            // B. If not open, look for the unread Authorize.net email in the list
-            // Gmail uses 'bog' for subject text spans
-            const emailThreads = document.querySelectorAll('tr.zA'); // Inbox rows
-            emailThreads.forEach(row => {
-                const subject = row.querySelector('span.bog');
-                if (subject && subject.innerText.includes("Authorize.Net Verification PIN")) {
-                    // Check if it's "new" (roughly checking if it's unread)
-                    if (row.classList.contains('zE')) {
-                        console.log("Found unread PIN email, opening...");
-                        subject.click();
-                    }
+            // 2. Scan Inbox for the specific unread email
+            const unreadEmails = document.querySelectorAll('tr.zE'); // 'zE' is Gmail's class for unread rows
+            unreadEmails.forEach(row => {
+                if (row.innerText.includes("Authorize.Net Verification PIN")) {
+                    console.log("Authorize email detected. Opening...");
+                    isProcessing = true;
+                    row.click();
+                    // Reset processing after a delay to allow the email to load
+                    setTimeout(() => { isProcessing = false; }, 3000);
                 }
             });
-        }, 2000); // Check every 2 seconds
+
+        }, 2000);
     }
 })();
