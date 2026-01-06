@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Authorize.net 2FA Auto-Bridge (Gmail)
 // @namespace    http://tampermonkey.net/
-// @version      1.3
-// @description  Automates 2FA PIN retrieval - SPA Compatible & Auto-Send
+// @version      1.4
+// @description  Automates 2FA PIN retrieval - Anti-Stale Logic
 // @author       EnduringGuerila
 // @match        https://login.authorize.net/*
 // @match        https://mail.google.com/*
@@ -20,42 +20,30 @@
 
     // --- AUTHORIZE.NET LOGIC ---
     if (location.href.includes(AUTH_URL)) {
-        
-        // 1. Monitor the page for the PIN field or the Send Button
         setInterval(() => {
-            // Check for the "Email PIN" button and click it automatically
             const sendBtn = document.querySelector('button.button-submit-recovery');
             if (sendBtn && !sendBtn.dataset.clicked) {
-                console.log("[Auth.net] Send Button found. Clicking...");
-                sendBtn.dataset.clicked = "true"; // Mark so we don't click it 100 times
+                console.log("[Auth.net] Clearing old PIN and requesting new one...");
+                GM_setValue("latest_pin", "WAITING"); // Clear the bridge
+                sendBtn.dataset.clicked = "true";
                 sendBtn.click();
             }
 
-            // Check for the PIN input field
             const pinInput = document.querySelector('input[name="input-enter-pin"]');
             if (pinInput) {
                 const currentPin = GM_getValue("latest_pin", "");
-                // Only paste if there is a pin and it's not already in the box
-                if (currentPin && pinInput.value !== currentPin) {
-                    console.log("[Auth.net] New PIN detected in storage. Injecting: " + currentPin);
-                    
-                    // Force the value into the field
+                // Only paste if we have a valid 8-digit number (not "WAITING" or empty)
+                if (/^\d{8}$/.test(currentPin) && pinInput.value !== currentPin) {
+                    console.log("[Auth.net] Valid PIN found. Injecting...");
                     pinInput.value = currentPin;
 
-                    // IMPORTANT: Authorize.net needs these events to enable the "Submit" button
                     pinInput.dispatchEvent(new Event('input', { bubbles: true }));
                     pinInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    pinInput.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
-                    pinInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Enter' }));
 
-                    // Try to click the Submit button after a brief pause
                     setTimeout(() => {
                         const submitBtn = document.querySelector('button[type="submit"]:not(.button-submit-recovery)');
-                        if (submitBtn) {
-                            console.log("[Auth.net] Submitting PIN...");
-                            submitBtn.click();
-                        }
-                    }, 800);
+                        if (submitBtn) submitBtn.click();
+                    }, 500);
                 }
             }
         }, 1000);
@@ -63,20 +51,26 @@
 
     // --- GMAIL LOGIC ---
     if (location.href.includes(GMAIL_URL)) {
+        let lastCaptured = GM_getValue("latest_pin", "");
+
         setInterval(() => {
             const isThreadOpen = location.hash.includes("#inbox/");
             const isInbox = location.hash === "#inbox" || location.hash === "" || location.hash.startsWith("#priority");
 
-            if (isInbox) {
-                const unreadEmails = document.querySelectorAll('tr.zE');
-                unreadEmails.forEach(row => {
-                    if (row.innerText.includes("Authorize.Net Verification PIN")) {
-                        console.log("[Gmail] Authorize email found. Opening...");
-                        row.click();
-                    }
-                });
+            // 1. If we are waiting for a PIN and in the inbox, check for unread
+            if (isInbox && GM_getValue("latest_pin") === "WAITING") {
+                const unreadRow = document.querySelector('tr.zE');
+                if (unreadRow && unreadRow.innerText.includes("Authorize.Net Verification PIN")) {
+                    console.log("[Gmail] New email detected. Opening...");
+                    unreadRow.click();
+                } else {
+                    // If no unread found, click the Gmail 'Refresh' button every few seconds
+                    const refreshBtn = document.querySelector('div[aria-label="Refresh"]');
+                    if (refreshBtn) refreshBtn.click();
+                }
             }
 
+            // 2. If we are inside the email thread, scrape the PIN
             if (isThreadOpen) {
                 const emailBody = document.querySelector('.ii.gt');
                 if (emailBody) {
@@ -85,14 +79,18 @@
 
                     if (pinMatch) {
                         const newPin = pinMatch[1];
-                        if (newPin !== GM_getValue("latest_pin")) {
-                            console.log("[Gmail] CAPTURED: " + newPin);
+                        // Only capture if it's not the one we just used
+                        if (newPin !== lastCaptured) {
+                            console.log("[Gmail] CAPTURED NEW PIN: " + newPin);
                             GM_setValue("latest_pin", newPin);
-                            setTimeout(() => { window.location.hash = "#inbox"; }, 1500);
+                            lastCaptured = newPin;
+                            
+                            // Return to inbox and reset Gmail state
+                            setTimeout(() => { window.location.hash = "#inbox"; }, 1000);
                         }
                     }
                 }
             }
-        }, 2000);
+        }, 3000); // 3-second interval to give Gmail UI time to breathe
     }
 })();
