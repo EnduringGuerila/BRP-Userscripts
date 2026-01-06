@@ -1,106 +1,105 @@
 // ==UserScript==
-// @name          Gmail POP3 Manual & Auto Checker
-// @namespace     https://github.com/EnduringGuerila/BRP-Userscripts/
-// @version       3.1
-// @description   Adds a persistent "Check POP3" button and runs an automated check every 60 seconds when the tab is inactive.
+// @name         Gmail POP3 Manual Mail Checker
+// @namespace    https://github.com/EnduringGuerila/BRP-Userscripts/blob/master/gmail-pop3-manual-mail-checker.user.js
+// @version      3.2
+// @description  Adds a button to the Inbox toolbar that navigates to the Accounts Settings page, forces a one-time POP3 mail check, and navigates back to the Inbox.
 // @author       EnduringGuerila
 // @updateURL    https://raw.githubusercontent.com/EnduringGuerila/BRP-Userscripts/master/gmail-pop3-manual-mail-checker.user.js
 // @downloadURL  https://raw.githubusercontent.com/EnduringGuerila/BRP-Userscripts/master/gmail-pop3-manual-mail-checker.user.js
-// @match         *://mail.google.com/*
-// @grant         none
+// @grant        none
+// @match        *://mail.google.com/*
+// @run-at       document-idle
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    const POP3_LINK_TEXT_EN = 'Check mail now';
-    const REFRESH_LABEL = 'Refresh';
-    const AUTO_CHECK_INTERVAL = 60000; // 60 seconds
+    console.log('[POP3 Script] Monitor Active');
+
+    const AUTO_CHECK_INTERVAL = 60000; 
     let lastAutoCheck = Date.now();
+    let isChecking = false;
 
-    // --- Core Logic: The "Check mail now" Trigger ---
-
+    // --- 1. The Trigger Logic (Settings Page) ---
     function triggerPop3Check() {
-        let pop3Links = Array.from(document.querySelectorAll('span[role="button"], div[role="button"], a[role="button"], [data-popid]'))
-            .filter(el => el.textContent.trim().includes(POP3_LINK_TEXT_EN) || el.textContent.toLowerCase().includes('check mail now'));
+        if (isChecking) return;
+        
+        const links = Array.from(document.querySelectorAll('span[role="button"], div[role="button"], a'))
+            .filter(el => el.textContent.trim().toLowerCase().includes('check mail now'));
 
-        if (pop3Links.length > 0) {
-            pop3Links.forEach(link => {
-                const e = { bubbles: true, cancelable: true, view: window };
-                link.dispatchEvent(new MouseEvent('mousedown', e));
-                link.dispatchEvent(new MouseEvent('mouseup', e));
-                link.dispatchEvent(new MouseEvent('click', e));
+        if (links.length > 0) {
+            isChecking = true;
+            console.log(`[POP3 Script] Found ${links.length} account(s). Triggering...`);
+            
+            links.forEach(link => {
+                const opts = { bubbles: true, cancelable: true, view: window };
+                link.dispatchEvent(new MouseEvent('mousedown', opts));
+                link.dispatchEvent(new MouseEvent('mouseup', opts));
+                link.dispatchEvent(new MouseEvent('click', opts));
             });
-            console.log('[POP3] Check triggered. Returning to inbox...');
-            window.location.hash = '#inbox';
-            return true;
+            
+            // Short delay to ensure Gmail registers the command before we leave
+            setTimeout(() => {
+                window.location.hash = '#inbox';
+                isChecking = false;
+            }, 1000);
         }
-        return false;
     }
 
-    // --- UI Logic: Persistent Button Insertion ---
-
-    function addManualCheckButton() {
-        // Prevent duplicate buttons
+    // --- 2. The UI Logic (Inbox Page) ---
+    function injectButton() {
         if (document.getElementById('gm-pop3-btn')) return;
 
-        const refreshBtn = document.querySelector(`div[aria-label="${REFRESH_LABEL}"]`);
-        if (!refreshBtn) return;
-
-        const btn = document.createElement('div');
-        btn.id = 'gm-pop3-btn';
-        btn.setAttribute('role', 'button');
-        btn.textContent = 'Check POP3';
-        btn.style.cssText = `
-            display: inline-block; padding: 0 8px; margin-left: 8px;
-            background-color: #dadce0; color: #202124; font-size: 11px;
-            font-weight: 500; border-radius: 4px; cursor: pointer;
-            height: 26px; line-height: 26px; user-select: none;
-        `;
-
-        btn.onclick = () => { window.location.hash = '#settings/accounts'; };
-        btn.onmouseover = () => { btn.style.backgroundColor = '#d3d4d6'; };
-        btn.onmouseout = () => { btn.style.backgroundColor = '#dadce0'; };
-
-        refreshBtn.parentNode.insertBefore(btn, refreshBtn.nextSibling);
-    }
-
-    // --- Automation: Background Checker ---
-
-    function runBackgroundMonitor() {
-        // 1. If we are on the settings page, try to click the button immediately
-        if (window.location.hash.includes('#settings/accounts')) {
-            const found = triggerPop3Check();
-            if (!found) {
-                // If not found yet (page still loading), retry briefly
-                setTimeout(triggerPop3Check, 1000);
-            }
-        }
-
-        // 2. If tab is hidden and 60s passed, go to settings
-        setInterval(() => {
-            if (document.hidden && (Date.now() - lastAutoCheck > AUTO_CHECK_INTERVAL)) {
-                console.log('[POP3] Tab is inactive. Starting auto-check...');
-                lastAutoCheck = Date.now();
-                window.location.hash = '#settings/accounts';
-            }
-        }, 5000); // Check state every 5 seconds
-    }
-
-    // --- Initialization: MutationObserver ---
-
-    // This observer stays active. Whenever Gmail swaps the UI (Inbox -> Email -> Inbox), 
-    // it looks for the Refresh button and re-injects our button.
-    const observer = new MutationObserver(() => {
-        addManualCheckButton();
+        // Gmail's toolbar uses several different selectors depending on the view
+        const toolbar = document.querySelector('div.bzn, div.G-atb');
+        const refreshBtn = document.querySelector('div[aria-label="Refresh"], div[data-tooltip="Refresh"]');
         
-        // Handle the settings page logic if we just navigated there
-        if (window.location.hash.includes('#settings/accounts')) {
-            triggerPop3Check();
+        if (refreshBtn && refreshBtn.parentNode) {
+            const btn = document.createElement('div');
+            btn.id = 'gm-pop3-btn';
+            btn.setAttribute('role', 'button');
+            btn.textContent = 'Check POP3';
+            btn.style.cssText = `
+                display: inline-flex; align-items: center; justify-content: center;
+                padding: 0 10px; margin: 0 8px;
+                background-color: #dadce0; color: #202124; font-size: 11px;
+                font-weight: 500; border-radius: 4px; cursor: pointer;
+                height: 24px; line-height: 24px; vertical-align: middle;
+            `;
+
+            btn.onclick = () => { window.location.hash = '#settings/accounts'; };
+            btn.onmouseover = () => { btn.style.backgroundColor = '#d3d4d6'; };
+            btn.onmouseout = () => { btn.style.backgroundColor = '#dadce0'; };
+
+            refreshBtn.parentNode.insertBefore(btn, refreshBtn.nextSibling);
         }
-    });
+    }
 
-    observer.observe(document.body, { childList: true, subtree: true });
-    runBackgroundMonitor();
+    // --- 3. Main Loop ---
+    function mainLoop() {
+        const hash = window.location.hash;
 
+        // Route: Settings Page
+        if (hash.includes('#settings/accounts')) {
+            triggerPop3Check();
+        } 
+        
+        // Route: Inbox
+        if (hash.includes('#inbox') || hash === '' || hash === '#all') {
+            injectButton();
+        }
+
+        // Automatic Background Check (If tab is hidden)
+        if (document.hidden && (Date.now() - lastAutoCheck > AUTO_CHECK_INTERVAL)) {
+            lastAutoCheck = Date.now();
+            console.log('[POP3 Script] Auto-triggering check due to inactivity.');
+            window.location.hash = '#settings/accounts';
+        }
+    }
+
+    // High-frequency check to handle Gmail's fast UI swaps
+    setInterval(mainLoop, 1500);
+
+    // Initial check
+    mainLoop();
 })();
