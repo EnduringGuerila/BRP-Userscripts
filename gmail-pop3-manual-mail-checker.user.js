@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gmail POP3 Manual Mail Checker
 // @namespace    https://github.com/EnduringGuerila/BRP-Userscripts/blob/master/gmail-pop3-manual-mail-checker.user.js
-// @version      3.2
+// @version      3.3
 // @description  Adds a button to the Inbox toolbar that navigates to the Accounts Settings page, forces a one-time POP3 mail check, and navigates back to the Inbox.
 // @author       EnduringGuerila
 // @updateURL    https://raw.githubusercontent.com/EnduringGuerila/BRP-Userscripts/master/gmail-pop3-manual-mail-checker.user.js
@@ -14,35 +14,54 @@
 (function() {
     'use strict';
 
-    console.log('[POP3 Script] Monitor Active');
+    console.log('[POP3 Script] Monitor Started');
 
     const AUTO_CHECK_INTERVAL = 60000; 
     let lastAutoCheck = Date.now();
-    let isChecking = false;
+    let checkInProgress = false;
 
     // --- 1. The Trigger Logic (Settings Page) ---
-    function triggerPop3Check() {
-        if (isChecking) return;
-        
-        const links = Array.from(document.querySelectorAll('span[role="button"], div[role="button"], a'))
+    async function triggerPop3Check() {
+        if (checkInProgress) return;
+        checkInProgress = true;
+
+        console.log('[POP3 Script] Scanning for "Check mail now" links...');
+
+        // Gmail POP3 links usually have the 'unselectable' class or role='button'
+        const findLinks = () => Array.from(document.querySelectorAll('span[role="button"], div[role="button"], a'))
             .filter(el => el.textContent.trim().toLowerCase().includes('check mail now'));
 
+        let links = findLinks();
+
+        // If not found, wait a bit (Gmail settings take time to render)
+        if (links.length === 0) {
+            for (let i = 0; i < 10; i++) {
+                await new Promise(r => setTimeout(r, 500));
+                links = findLinks();
+                if (links.length > 0) break;
+            }
+        }
+
         if (links.length > 0) {
-            isChecking = true;
-            console.log(`[POP3 Script] Found ${links.length} account(s). Triggering...`);
+            console.log(`[POP3 Script] Found ${links.length} account(s). Clicking...`);
             
-            links.forEach(link => {
+            for (const link of links) {
+                link.focus();
                 const opts = { bubbles: true, cancelable: true, view: window };
                 link.dispatchEvent(new MouseEvent('mousedown', opts));
+                await new Promise(r => setTimeout(r, 100)); // Mimic human press duration
                 link.dispatchEvent(new MouseEvent('mouseup', opts));
                 link.dispatchEvent(new MouseEvent('click', opts));
-            });
+            }
             
-            // Short delay to ensure Gmail registers the command before we leave
+            console.log('[POP3 Script] Success. Returning to Inbox in 2s...');
             setTimeout(() => {
                 window.location.hash = '#inbox';
-                isChecking = false;
-            }, 1000);
+                checkInProgress = false;
+            }, 2000);
+        } else {
+            console.warn('[POP3 Script] Could not find POP3 links on this page.');
+            checkInProgress = false;
         }
     }
 
@@ -50,9 +69,8 @@
     function injectButton() {
         if (document.getElementById('gm-pop3-btn')) return;
 
-        // Gmail's toolbar uses several different selectors depending on the view
-        const toolbar = document.querySelector('div.bzn, div.G-atb');
-        const refreshBtn = document.querySelector('div[aria-label="Refresh"], div[data-tooltip="Refresh"]');
+        // More robust toolbar detection
+        const refreshBtn = document.querySelector('div[aria-label="Refresh"], div[data-tooltip="Refresh"], div[aria-label="Actualizar"]');
         
         if (refreshBtn && refreshBtn.parentNode) {
             const btn = document.createElement('div');
@@ -65,9 +83,15 @@
                 background-color: #dadce0; color: #202124; font-size: 11px;
                 font-weight: 500; border-radius: 4px; cursor: pointer;
                 height: 24px; line-height: 24px; vertical-align: middle;
+                border: 1px solid transparent;
             `;
 
-            btn.onclick = () => { window.location.hash = '#settings/accounts'; };
+            btn.onclick = (e) => {
+                e.preventDefault();
+                console.log('[POP3 Script] Button Clicked. Navigating...');
+                window.location.hash = '#settings/accounts';
+            };
+            
             btn.onmouseover = () => { btn.style.backgroundColor = '#d3d4d6'; };
             btn.onmouseout = () => { btn.style.backgroundColor = '#dadce0'; };
 
@@ -79,27 +103,23 @@
     function mainLoop() {
         const hash = window.location.hash;
 
-        // Route: Settings Page
         if (hash.includes('#settings/accounts')) {
             triggerPop3Check();
         } 
         
-        // Route: Inbox
-        if (hash.includes('#inbox') || hash === '' || hash === '#all') {
+        // Match Inbox, All Mail, or Search results to keep button visible
+        if (hash.includes('#inbox') || hash === '' || hash.includes('#all') || hash.includes('#search')) {
             injectButton();
         }
 
         // Automatic Background Check (If tab is hidden)
         if (document.hidden && (Date.now() - lastAutoCheck > AUTO_CHECK_INTERVAL)) {
             lastAutoCheck = Date.now();
-            console.log('[POP3 Script] Auto-triggering check due to inactivity.');
+            console.log('[POP3 Script] Tab hidden. Moving to settings for auto-check.');
             window.location.hash = '#settings/accounts';
         }
     }
 
-    // High-frequency check to handle Gmail's fast UI swaps
-    setInterval(mainLoop, 1500);
-
-    // Initial check
+    setInterval(mainLoop, 2000);
     mainLoop();
 })();
