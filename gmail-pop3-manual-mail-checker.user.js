@@ -3,7 +3,9 @@
 // @namespace     https://github.com/EnduringGuerila/BRP-Userscripts/
 // @version       3.0
 // @description   Adds a persistent "Check POP3" button and runs an automated check every 60 seconds when the tab is inactive.
-// @author        EnduringGuerila / Gemini
+// @author       EnduringGuerila
+// @updateURL    https://raw.githubusercontent.com/EnduringGuerila/BRP-Userscripts/master/gmail-pop3-manual-mail-checker.user.js
+// @downloadURL  https://raw.githubusercontent.com/EnduringGuerila/BRP-Userscripts/master/gmail-pop3-manual-mail-checker.user.js
 // @match         *://mail.google.com/*
 // @grant         none
 // ==/UserScript==
